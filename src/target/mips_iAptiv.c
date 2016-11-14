@@ -80,7 +80,6 @@ static int mips_iAptiv_halt_all(struct target *target)
 {
 	struct mips32_common *mips32 = target_to_mips32(target);
 	struct mips_ejtag *ejtag_info = &mips32->ejtag_info;
-//	uint32_t ejtag_ctrl;
 
 	int retval = ERROR_OK;
 	struct target *curr;
@@ -104,64 +103,63 @@ static int mips_iAptiv_halt_all(struct target *target)
 	return retval;
 }
 
-uint32_t *mips_get_gic (struct target *target, int *retval)
+uint32_t mips_get_gic (struct target *target, int *retval)
 {
 	struct mips32_common *mips32 = target_to_mips32(target);
 	struct mips_ejtag *ejtag_info = &mips32->ejtag_info;
 	
-	uint32_t *gcr_base;
-	uint32_t *gic_base;
+	uint32_t gcr_base;
+	uint32_t gic_base;
 	uint32_t config3; /*	cp0 config - 16, 3 */
 	uint32_t cmgcrbase; /*	cp0 config - 15, 3 */
 
 	if ((*retval = mips32_pracc_cp0_read(ejtag_info, &config3, 16, 3))!= ERROR_OK)
-		return ((uint32_t *)NULL);
+		return 0;
 
 	/* Read Config3 to determine if CMGCRBASE register is implemented */
 	if ((config3 & 0x8) == 0){
 		LOG_USER("CMGCRBASE not configured");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
 	/* Read cmgcrbase config register */
 	if ((*retval = mips32_pracc_cp0_read(ejtag_info, &cmgcrbase, 15, 3)) != ERROR_OK){
 		LOG_DEBUG("target_read_u32 failed");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
-	gcr_base = (uint32_t *)((cmgcrbase << 4) + 0xa0000000);
+	gcr_base = ((cmgcrbase << 4) + 0xa0000000);
 
-	*retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x80), (uint32_t *) &gic_base);
+	*retval = target_read_u32(target, gcr_base + 0x80, &gic_base);
 	if (*retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
-	if (((uint32_t ) gic_base >> 24) != 0x1b){
-		*retval = target_write_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x80), 0x1BDC0000);
+	if ((gic_base >> 24) != 0x1b){
+		*retval = target_write_u32(target, gcr_base + 0x80, 0x1BDC0000);
 		if (*retval != ERROR_OK) {
 			LOG_DEBUG("target_write_u32 failed");
-			return ((uint32_t *)NULL);
+			return 0;
 		}
 
-		*retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x80), (uint32_t *) &gic_base);
+		*retval = target_read_u32(target, gcr_base + 0x80, &gic_base);
 		if (*retval != ERROR_OK) {
 			LOG_DEBUG("target_read_u32 failed");
-			return ((uint32_t *)NULL);
+			return 0;
 		}
 	}
 
 	/* Set CPC enable bit (0) */
-	save_gic_enable = (uint32_t)gic_base & 1;
-	gic_base = (uint32_t *)((uint32_t)gic_base | 0x1);
-	*retval = target_write_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x80), (uint32_t)gic_base);
+	save_gic_enable = gic_base & 1;
+	gic_base = (gic_base | 0x1);
+	*retval = target_write_u32(target, gcr_base + 0x80, gic_base);
 	if (*retval != ERROR_OK) {
 		LOG_DEBUG("target_write_u32 failed");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
-	return ((uint32_t *)(((uint32_t)gic_base + 0xa0000000) & 0xffff0000));
-
+	return ((gic_base + 0xa0000000) & 0xffff0000);
 }
 
 int mips_restore_gic_enable_state (struct target *target)
@@ -169,7 +167,7 @@ int mips_restore_gic_enable_state (struct target *target)
 	struct mips32_common *mips32 = target_to_mips32(target);
 	struct mips_ejtag *ejtag_info = &mips32->ejtag_info;
 	
-	uint32_t *gcr_base;
+	uint32_t gcr_base;
 	uint32_t temp;
 
 	uint32_t config3; /*	cp0 config - 16, 3 */
@@ -190,9 +188,9 @@ int mips_restore_gic_enable_state (struct target *target)
 	if ((retval = mips32_pracc_cp0_read(ejtag_info, &cmgcrbase, 15, 3)) != ERROR_OK)
 		return retval;
 
-	gcr_base = (uint32_t *)((cmgcrbase << 4) + 0xa0000000);
+	gcr_base = ((cmgcrbase << 4) + 0xa0000000);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + 0x80), &temp);
+	retval = target_read_u32(target, gcr_base + 0x80, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -202,7 +200,7 @@ int mips_restore_gic_enable_state (struct target *target)
 	if (save_gic_enable == 0)
 		temp = temp & 0xfffffffe; 
 	
-	retval = target_write_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x80), temp);
+	retval = target_write_u32(target, gcr_base +0x80, temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_write_u32 failed");
 		return retval;
@@ -211,67 +209,67 @@ int mips_restore_gic_enable_state (struct target *target)
 	return ERROR_OK;
 }
 
-uint32_t * mips_get_cpc (struct target *target, int *retval)
+uint32_t mips_get_cpc (struct target *target, int *retval)
 {
 	struct mips32_common *mips32 = target_to_mips32(target);
 	struct mips_ejtag *ejtag_info = &mips32->ejtag_info;
 	
-	uint32_t *gcr_base;
-	uint32_t *cpc_base;
+	uint32_t gcr_base;
+	uint32_t cpc_base;
 	uint32_t config3; /*	cp0 config - 16, 3 */
 	uint32_t cmgcrbase; /*	cp0 config - 15, 3 */
 
 	if ((*retval = mips32_pracc_cp0_read(ejtag_info, &config3, 16, 3))!= ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
 	/* Read Config3 to determine if CMGCRBASE register is implemented */
 	if ((config3 & 0x8) == 0){
 		LOG_USER("CMGCRBASE not configured");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
 	/* Read cmgcrbase config register */
 	if ((*retval = mips32_pracc_cp0_read(ejtag_info, &cmgcrbase, 15, 3)) != ERROR_OK){
 		LOG_DEBUG("target_read_u32 failed");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
-	gcr_base = (uint32_t *)((cmgcrbase << 4) + 0xa0000000);
+	gcr_base = ((cmgcrbase << 4) + 0xa0000000);
 
 	/* get CPC base */
-	*retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x88), (uint32_t *)&cpc_base);
+	*retval = target_read_u32(target, gcr_base + 0x88, &cpc_base);
 	if (*retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
 	/* Has CPC address been initialized */
-	if (((uint32_t )cpc_base >> 24) != 0x1b){ 
-		*retval = target_write_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x88), 0x1BDE0000);
+	if ((cpc_base >> 24) != 0x1b){ 
+		*retval = target_write_u32(target, gcr_base + 0x88, 0x1BDE0000);
 		if (*retval != ERROR_OK) {
 			LOG_DEBUG("target_write_u32 failed");
-			return ((uint32_t *)NULL);
+			return 0;
 		}
 
-		*retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x88), (uint32_t *)&cpc_base);
+		*retval = target_read_u32(target, gcr_base + 0x88, &cpc_base);
 		if (*retval != ERROR_OK) {
 			LOG_DEBUG("target_read_u32 failed");
-			return ((uint32_t *)NULL);
+			return 0;
 		}
 	}
 
 	/* Set CPC enable bit (0) */
-	save_cpc_enable = (uint32_t)cpc_base & 1;
-	cpc_base = (uint32_t *)((uint32_t)cpc_base | 0x1);
-	*retval = target_write_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x88), (uint32_t)cpc_base);
+	save_cpc_enable = cpc_base & 1;
+	cpc_base = (cpc_base | 0x1);
+	*retval = target_write_u32(target, gcr_base + 0x88, cpc_base);
 	if (*retval != ERROR_OK) {
 		LOG_DEBUG("target_write_u32 failed");
-		return ((uint32_t *)NULL);
+		return 0;
 	}
 
-	return ((uint32_t *)(((uint32_t)cpc_base + 0xa0000000) & 0xffff0000));
+	return ((cpc_base + 0xa0000000) & 0xffff0000);
 }
 
 
@@ -280,7 +278,7 @@ int mips_restore_cpc_enable_state (struct target *target)
 	struct mips32_common *mips32 = target_to_mips32(target);
 	struct mips_ejtag *ejtag_info = &mips32->ejtag_info;
 	
-	uint32_t *gcr_base;
+	uint32_t gcr_base;
 	uint32_t temp;
 
 	uint32_t config3; /*	cp0 config - 16, 3 */
@@ -301,9 +299,9 @@ int mips_restore_cpc_enable_state (struct target *target)
 	if ((retval = mips32_pracc_cp0_read(ejtag_info, &cmgcrbase, 15, 3)) != ERROR_OK)
 		return retval;
 
-	gcr_base = (uint32_t *)((cmgcrbase << 4) + 0xa0000000);
+	gcr_base = ((cmgcrbase << 4) + 0xa0000000);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + 0x88), &temp);
+	retval = target_read_u32(target, gcr_base + 0x88, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -313,7 +311,7 @@ int mips_restore_cpc_enable_state (struct target *target)
 	if (save_cpc_enable == 0)
 		temp = temp & 0xfffffffe; 
 	
-	retval = target_write_u32(target, (uint32_t)(((uint32_t)gcr_base) +0x88), temp);
+	retval = target_write_u32(target, gcr_base + 0x88, temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_write_u32 failed");
 		return retval;
@@ -325,7 +323,10 @@ int mips_restore_cpc_enable_state (struct target *target)
 COMMAND_HANDLER(mips_ia_handle_cmdall_command)
 {
 	struct target *target = get_current_target(CMD_CTX);
-
+#if 0
+	struct mips32_common *mips32 = target_to_mips32(target);
+	struct mips_ejtag *ejtag_info = &mips_iAptiv->mips32.ejtag_info;
+#endif
 	int retval = -1;
 	int i = 0;
 
@@ -371,9 +372,9 @@ COMMAND_HANDLER(mips_dump_gcr_command)
 	struct mips32_common *mips32 = target_to_mips32(target);
 	struct mips_ejtag *ejtag_info = &mips32->ejtag_info;
 	
-	uint32_t *gcr_base;
-	uint32_t *gic_base;
-	uint32_t *cpc_base;
+	uint32_t gcr_base;
+	uint32_t gic_base;
+	uint32_t cpc_base;
 	uint32_t temp;
 
 	uint32_t config3; /*	cp0 config - 16, 3 */
@@ -404,9 +405,9 @@ COMMAND_HANDLER(mips_dump_gcr_command)
 	if ((retval = mips32_pracc_cp0_read(ejtag_info, &cmgcrbase, 15, 3)) != ERROR_OK)
 		return retval;
 
-	gcr_base = (uint32_t *)((cmgcrbase << 4) + 0xa0000000);
+	gcr_base = ((cmgcrbase << 4) + 0xa0000000);
 
-	retval = target_read_u32(target, (uint32_t)gcr_base, &temp);
+	retval = target_read_u32(target, gcr_base, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -414,7 +415,7 @@ COMMAND_HANDLER(mips_dump_gcr_command)
 
 	LOG_USER ("gcr_config  = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + 0x8), &temp);
+	retval = target_read_u32(target, gcr_base + 0x8, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -422,7 +423,7 @@ COMMAND_HANDLER(mips_dump_gcr_command)
 
 	LOG_USER ("gcr_base    = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + 0x10), &temp);
+	retval = target_read_u32(target, gcr_base + 0x10, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -430,7 +431,7 @@ COMMAND_HANDLER(mips_dump_gcr_command)
 
 	LOG_USER ("gcr_control = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + 0x20), &temp);
+	retval = target_read_u32(target, gcr_base + 0x20, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -438,7 +439,7 @@ COMMAND_HANDLER(mips_dump_gcr_command)
 
 	LOG_USER ("gcr_access  = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + 0x30), &temp);
+	retval = target_read_u32(target, gcr_base + 0x30, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -454,9 +455,9 @@ COMMAND_HANDLER(mips_dump_gcr_command)
 	if (retval != ERROR_OK)
 		return retval;
 
-	LOG_USER ("gic_base    = 0x%8.8x", (uint32_t)gic_base);
+	LOG_USER ("gic_base    = 0x%8.8x", gic_base);
 	mips_restore_gic_enable_state(target);
-	LOG_USER ("cpc_base    = 0x%8.8x", (uint32_t)cpc_base);
+	LOG_USER ("cpc_base    = 0x%8.8x", cpc_base);
 	mips_restore_cpc_enable_state(target);
 	return ERROR_OK;
 }
@@ -513,26 +514,26 @@ COMMAND_HANDLER(mips_dump_lcr_command)
 	if ((retval = mips32_pracc_cp0_read(ejtag_info, &cmgcrbase, 15, 3)) != ERROR_OK)
 		return retval;
 
-	uint32_t *gcr_base;
+	uint32_t gcr_base;
 	uint32_t temp;
 
-	gcr_base = (uint32_t *)((cmgcrbase << 4) + 0xa0000000) ;
+	gcr_base = ((cmgcrbase << 4) + 0xa0000000) ;
 
 	/* GCR CL (gcr_base+0) Base address */
 	if (core != 0){
-		retval = target_write_u32(target, (uint32_t)(((uint32_t)gcr_base) + 0x2018), (uint32_t)(core << 16));
+		retval = target_write_u32(target, gcr_base + 0x2018, (core << 16));
 		if (retval != ERROR_OK) {
 			LOG_DEBUG("target_read_u32 failed");
 			return retval;
 		}
 
-		LOG_USER ("GCR CL Other = 0x%8.8x", (uint32_t)(((uint32_t)gcr_base) + offset));
+		LOG_USER ("GCR CL Other = 0x%8.8x", gcr_base + offset);
 	}
 	else
-		LOG_USER ("GCR CL       = 0x%8.8x", (uint32_t)(((uint32_t)gcr_base) + offset));
+		LOG_USER ("GCR CL       = 0x%8.8x", gcr_base + offset);
 
 	/* cl_coherence (gcr_base+0x2000/0x4000 + 0x8 - Core-Local Coherence Control. */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + offset + 0x08), &temp);
+	retval = target_read_u32(target, gcr_base + offset + 0x08, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -541,7 +542,7 @@ COMMAND_HANDLER(mips_dump_lcr_command)
 	LOG_USER ("cl_coherence = 0x%8.8x", temp);
 
 	/* cl_config (gcr_base+0x2000/0x4000 + 0x10) - Core-Local Configuration */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + offset + 0x10), &temp);
+	retval = target_read_u32(target, gcr_base + offset + 0x10, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -550,7 +551,7 @@ COMMAND_HANDLER(mips_dump_lcr_command)
 	LOG_USER ("cl_config    = 0x%8.8x", temp);
 
 	/* cl_other (gcr_base+0x2000/0x4000 + 0x18) - Core-Other Addressing */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + offset + 0x18), &temp);
+	retval = target_read_u32(target, gcr_base + offset + 0x18, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -559,7 +560,7 @@ COMMAND_HANDLER(mips_dump_lcr_command)
 	LOG_USER ("cl_other     = 0x%8.8x", temp);
 
 	/* cl_resetbase (gcr_base+0x2000/0x4000 + 0x20) - Reset Exception Base for the local core. */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + offset + 0x20), &temp);
+	retval = target_read_u32(target, gcr_base + offset + 0x20, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -568,7 +569,7 @@ COMMAND_HANDLER(mips_dump_lcr_command)
 	LOG_USER ("cl_resetbase = 0x%8.8x", temp);
 
 	/* cl_id (gcr_base+0x2000/0x4000 + 0x28) - Indicates the ID number of the local core. */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gcr_base) + offset + 0x28), &temp);
+	retval = target_read_u32(target, gcr_base + offset + 0x28, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		return retval;
@@ -600,7 +601,7 @@ COMMAND_HANDLER(mips_dump_cpc_command)
 		return ERROR_OK;
 	}
 
-	uint32_t *cpc_base = 0;
+	uint32_t cpc_base = 0;
 	uint32_t temp;
 
 	uint32_t config3; /*	cp0 config - 16, 3 */
@@ -626,10 +627,10 @@ COMMAND_HANDLER(mips_dump_cpc_command)
 	if (retval != ERROR_OK)
 		return retval;
 
-	LOG_USER ("CPC_BASE         = 0x%8.8x", (uint32_t)cpc_base);
+	LOG_USER ("CPC_BASE         = 0x%8.8x", cpc_base);
 
 	/* CPC_ACCESS_REG (cpc_base + 0) - Controls which cores can modify the CPC Registers.*/
-	retval = target_read_u32(target, (uint32_t)(uint32_t)cpc_base, &temp);
+	retval = target_read_u32(target, cpc_base, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -639,7 +640,7 @@ COMMAND_HANDLER(mips_dump_cpc_command)
 
 	/* CPC_SEQDEL_REG (cpc_base + 8) - Time between microsteps of a CPC domain */
 	/*                                 sequencer in CPC clock cycles.          */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)cpc_base) + 0x8), &temp);
+	retval = target_read_u32(target, cpc_base + 0x8, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -650,7 +651,7 @@ COMMAND_HANDLER(mips_dump_cpc_command)
 	/* CPC_RAIL_REG (cpc_base + 0x10) - Rail power-up timer to delay CPS            */
     /*                                  sequencer progress until the gated rail has */
     /*                                  stabilized.                                 */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)cpc_base) + 0x10), &temp);
+	retval = target_read_u32(target, cpc_base + 0x10, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -659,7 +660,7 @@ COMMAND_HANDLER(mips_dump_cpc_command)
 	LOG_USER ("CPC_RAIL_REG     = 0x%x", temp);
 
 	/* CPC_RESETLEN_REG (cpc_base + 0x18) - Duration of any domain reset sequence. */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)cpc_base) + 0x18), &temp);
+	retval = target_read_u32(target, cpc_base + 0x18, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -668,7 +669,7 @@ COMMAND_HANDLER(mips_dump_cpc_command)
 	LOG_USER ("CPC_RESETLEN_REG = 0x%x", temp);
 
 	/* CPC_REVISION_REG (cpc_base + 0x20) - RTL Revision of CPC */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)cpc_base) + 0x20), &temp);
+	retval = target_read_u32(target, cpc_base + 0x20, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -729,7 +730,7 @@ COMMAND_HANDLER(mips_dump_cpc_lcr_command)
 	if ((retval = mips32_pracc_cp0_read(ejtag_info, &cmgcrbase, 15, 3)) != ERROR_OK)
 		return retval;
 
-	uint32_t *cpc_base;
+	uint32_t cpc_base;
 	uint32_t temp;
 
 	/* get CPC base */
@@ -738,21 +739,21 @@ COMMAND_HANDLER(mips_dump_cpc_lcr_command)
 		return retval;
 
 	if (core != 0){
-		LOG_USER ("CPC CL Other         = 0x%8.8x", (uint32_t)((uint32_t)cpc_base + offset));
-		retval = target_write_u32(target, (uint32_t) (uint32_t)(((uint32_t)cpc_base) + 0x2010), (uint32_t)(core << 16));
+		LOG_USER ("CPC CL Other         = 0x%8.8x", cpc_base + offset);
+		retval = target_write_u32(target, cpc_base + 0x2010, (core << 16));
 		if (retval != ERROR_OK) {
 			LOG_DEBUG("target_read_u32 failed");
 			return retval;
 		}
 	}
 	else
-		LOG_USER ("CPC CL               = 0x%8.8x", (uint32_t)((uint32_t)cpc_base + offset));
+		LOG_USER ("CPC CL               = 0x%8.8x", cpc_base + offset);
 
 	/* CPC_CL_CMD_REG (cpc_base+0x2000/0x4000) - Places a new CPC domain state command */
 	/* into this individual domain sequencer. This register is not available    */
 	/* within the CM sequencer. Writes to the CM CMD register are ignored while */
 	/* reads will return zero.                                                  */
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)cpc_base) + offset), &temp);
+	retval = target_read_u32(target, cpc_base + offset, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -760,7 +761,7 @@ COMMAND_HANDLER(mips_dump_cpc_lcr_command)
 
 	LOG_USER ("CPC_CL_CMD_REG       = 0x%x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)cpc_base) + offset + 0x10), &temp);
+	retval = target_read_u32(target, cpc_base + offset + 0x10, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -768,7 +769,7 @@ COMMAND_HANDLER(mips_dump_cpc_lcr_command)
 
 	LOG_USER ("CPC_CL_OTHER_REG     = 0x%x", temp);
 	
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)cpc_base) + offset + 0x8), &cpc_stat_conf);
+	retval = target_read_u32(target, cpc_base + offset + 0x8, &cpc_stat_conf);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -877,7 +878,7 @@ COMMAND_HANDLER(mips_dump_gic_shared_command)
 		return ERROR_OK;
 	}
 
-	uint32_t *gic_base;
+	uint32_t gic_base;
 	uint32_t temp;
 
 	uint32_t config3; /*	cp0 config - 16, 3 */
@@ -904,9 +905,9 @@ COMMAND_HANDLER(mips_dump_gic_shared_command)
 		return retval;
 	}
 
-	LOG_USER ("GIC BASE = 0x%8.8x", (uint32_t)((uint32_t)gic_base));
+	LOG_USER ("GIC BASE = 0x%8.8x", gic_base);
 
-	retval = target_read_u32(target, (uint32_t)gic_base, &temp);
+	retval = target_read_u32(target, gic_base, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -914,7 +915,7 @@ COMMAND_HANDLER(mips_dump_gic_shared_command)
 
 	LOG_USER ("GIC_SH_CONFIG_REG    = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_base) + 0x10), &temp);
+	retval = target_read_u32(target, gic_base + 0x10, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -922,7 +923,7 @@ COMMAND_HANDLER(mips_dump_gic_shared_command)
 
 	LOG_USER ("GIC_SH_CounterLo_REG = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_base) + 0x14), &temp);
+	retval = target_read_u32(target, gic_base + 0x14, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -930,7 +931,7 @@ COMMAND_HANDLER(mips_dump_gic_shared_command)
 
 	LOG_USER ("GIC_SH_CounterHi_REG = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_base) + 0x20), &temp);
+	retval = target_read_u32(target, gic_base + 0x20, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -959,8 +960,8 @@ COMMAND_HANDLER(mips_dump_gic_local_command)
 		return ERROR_OK;
 	}
 
-	uint32_t *gic_base;
-	uint32_t *gic_vpe_local_base;
+	uint32_t gic_base;
+	uint32_t gic_vpe_local_base;
 	uint32_t temp;
 
 	uint32_t config3; /*	cp0 config - 16, 3 */
@@ -985,10 +986,10 @@ COMMAND_HANDLER(mips_dump_gic_local_command)
 	if (retval != ERROR_OK)
 		return retval;
 
-	gic_vpe_local_base = (uint32_t *)(((uint32_t)gic_base + 0x8000));
-	LOG_USER ("GIC_VPE_LOCAL_BASE      = 0x%8.8x", (uint32_t)gic_vpe_local_base);
+	gic_vpe_local_base = gic_base + 0x8000;
+	LOG_USER ("GIC_VPE_LOCAL_BASE      = 0x%8.8x", gic_vpe_local_base);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_vpe_local_base) + 0x80), &temp);
+	retval = target_read_u32(target, gic_vpe_local_base + 0x80, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -996,7 +997,7 @@ COMMAND_HANDLER(mips_dump_gic_local_command)
 
 	LOG_USER ("GIC_VPEi_OTHER_ADDR     = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_vpe_local_base) + 0x88), &temp);
+	retval = target_read_u32(target, gic_vpe_local_base + 0x88, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -1004,7 +1005,7 @@ COMMAND_HANDLER(mips_dump_gic_local_command)
 
 	LOG_USER ("GIC_VPEi_IDENT          = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_vpe_local_base) + 0x90), &temp);
+	retval = target_read_u32(target, gic_vpe_local_base + 0x90, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -1012,7 +1013,7 @@ COMMAND_HANDLER(mips_dump_gic_local_command)
 
 	LOG_USER ("GIC_VPEi_WD_CONFIG0     = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_vpe_local_base) + 0x94), &temp);
+	retval = target_read_u32(target, gic_vpe_local_base + 0x94, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -1020,7 +1021,7 @@ COMMAND_HANDLER(mips_dump_gic_local_command)
 
 	LOG_USER ("GIC_VPEi_WD_COUNT0      = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_vpe_local_base) + 0x3000), &temp);
+	retval = target_read_u32(target, gic_vpe_local_base + 0x3000, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -1028,7 +1029,7 @@ COMMAND_HANDLER(mips_dump_gic_local_command)
 
 	LOG_USER ("GIC_VPEi_DINT           = 0x%x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_vpe_local_base) + 0x3080), &temp);
+	retval = target_read_u32(target, gic_vpe_local_base + 0x3080, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 		goto exit;
@@ -1036,7 +1037,7 @@ COMMAND_HANDLER(mips_dump_gic_local_command)
 
 	LOG_USER ("GIC_VPEi_LOCAL_DEBUG_GR = 0x%8.8x", temp);
 
-	retval = target_read_u32(target, (uint32_t)(((uint32_t)gic_vpe_local_base) + 0x88), &temp);
+	retval = target_read_u32(target, gic_vpe_local_base + 0x88, &temp);
 	if (retval != ERROR_OK) {
 		LOG_DEBUG("target_read_u32 failed");
 	}

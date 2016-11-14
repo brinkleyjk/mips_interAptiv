@@ -104,7 +104,7 @@ int mips_common_handle_target_request(void *priv)
 
 			if ((((fdc_data >> 36) & 1) == 1) && (mips32->semihosting == ENABLE_SEMIHOSTING)) {
 				uint8_t *fdc_char = (void *) &fdc_data;
-				printf ("%0.4s", fdc_char);
+				printf ("%.4s", fdc_char);
 				fflush(stdout);
 			}
 
